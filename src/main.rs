@@ -14,8 +14,8 @@ fn main() {
     let mut loki = config::Loki::default();
     loki.login = "admin".to_string();
     loki.password = "admin".to_string();
-    loki.log_from = Some(Utc::now());
-    loki.log_to = Some(Utc::now() + Duration::minutes(5 as i64));
+    loki.log_from = Some(Utc::now() - Duration::minutes(15));
+    loki.log_to = Some(Utc::now());
 
     let config = Arc::new(
         config::Config {
@@ -40,7 +40,7 @@ fn main() {
         node,
         config: config.clone(),
     };
-    lw.collect_without_pods("ptaf-conf-mgr-rest", "app", "/home/ash").unwrap();
+    lw.collect_without_pods("ptaf-conf-mgr-rest", "app", "/home").unwrap();
     // let result = lw.collect_labels("instance").unwrap();
     // println!("result: {:?}", result)
 }

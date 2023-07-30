@@ -2,6 +2,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use std::path::PathBuf;
+use std::fs;
+
 
 use crate::ptaf_node;
 use crate::config;
@@ -39,19 +41,19 @@ impl LokiWorker {
     ) -> Result<()> {
         let out_file = format!("/tmp/{}", file);
         let dest_file = format!("{}/{}", path, file);
-        // let loki_cmd = format!("{} query \'{}\' ", self.script_head(), query);
         let mut loki_cmd = format!("{} query \'{}\' ", self.script_head(), query);
-        let from_str = format!("{}", self.config.loki.log_from.unwrap().format("%Y-%m-%dT%H:%M:%S.%fZ"));
-        let to_str = format!("{}", self.config.loki.log_to.unwrap().format("%Y-%m-%dT%H:%M:%S.%fZ"));
+        let from_str = format!("{}", self.config.loki.log_from.unwrap().format("%Y-%m-%dT%H:%M:%SZ"));
+        let to_str = format!("{}", self.config.loki.log_to.unwrap().format("%Y-%m-%dT%H:%M:%SZ"));
+        // loki_cmd += format!("--batch=5000 --from=\'{}\' --to=\'{}\' --forward ", from_str, to_str).as_str();
         loki_cmd += format!("--batch=5000 --from=\'{}\' --to=\'{}\' --forward ", from_str, to_str).as_str();
-        // loki_cmd += format!("--limit {} -o raw", LIMIT).as_str();
-        loki_cmd += format!("--limit {} -o raw > \'{}\'", LIMIT, out_file).as_str();
+        loki_cmd += format!("--limit {} -o raw", LIMIT).as_str();
 
         let conn = self.node.get_ssh_conn()?;
         let envs = self.config.get_envs();
         println!("collect query: {}", loki_cmd);
         let res = conn.execute(loki_cmd.as_str(), envs, None)?;
         println!("{:?}", res);
+        fs::write(dest_file, res.join("\n"))?;
 
         // println!("start copy to local");
         // conn.copy_to_local(out_file.as_str(), dest_file.as_str())?;

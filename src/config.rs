@@ -49,28 +49,29 @@ pub struct Config {
 
 impl Config {
     pub fn get_envs(&self) -> String {
-        let login = &self.ssh_creds.login;
-        let path = match login.as_str() {
-            "root" => format!("{}/", login),
-            _ => format!("home/{}", login),
-        };
-        let envs = HashMap::from([
-            ("USER", login.to_owned()),
-            ("PWD", path.to_owned()),
-            ("HOME", path.to_owned()),
-            ("MAIL", format!("/var/mail/{}", login)),
-            ("SHELL", "/bin/bash".to_string()),
-            ("SHLVL", "1".to_string()),
-            ("LOGNAME", login.to_owned()),
-            ("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_string()),
-        ]);
-        let mut env =String::with_capacity(envs.len());
-        for (i, (key, val)) in envs.iter().enumerate() {
-            env.push_str(format!("{}={}", key, &val).as_str());
-            if i != envs.len() - 1 {
-                env.push_str(", ");
-            }
-        }
-        env
+        "".to_string()
+        // let login = &self.ssh_creds.login;
+        // let path = match login.as_str() {
+        //     "root" => format!("{}/", login),
+        //     _ => format!("home/{}", login),
+        // };
+        // let envs = HashMap::from([
+        //     ("USER", login.to_owned()),
+        //     ("PWD", path.to_owned()),
+        //     ("HOME", path.to_owned()),
+        //     ("MAIL", format!("/var/mail/{}", login)),
+        //     ("SHELL", "/bin/bash".to_string()),
+        //     ("SHLVL", "1".to_string()),
+        //     ("LOGNAME", login.to_owned()),
+        //     ("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_string()),
+        // ]);
+        // let mut env =String::with_capacity(envs.len());
+        // for (i, (key, val)) in envs.iter().enumerate() {
+        //     env.push_str(format!("{}={}", key, &val).as_str());
+        //     if i != envs.len() - 1 {
+        //         env.push_str(", ");
+        //     }
+        // }
+        // env
     }
 }
