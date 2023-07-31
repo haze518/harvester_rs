@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
 use chrono::{Utc, Duration};
+use std::thread;
+use std::time::Instant;
+
 
 mod session_manager;
 mod ssh_utils;
@@ -14,7 +17,7 @@ fn main() {
     let mut loki = config::Loki::default();
     loki.login = "admin".to_string();
     loki.password = "admin".to_string();
-    loki.log_from = Some(Utc::now() - Duration::minutes(15));
+    loki.log_from = Some(Utc::now() - Duration::hours(1));
     loki.log_to = Some(Utc::now());
 
     let config = Arc::new(
@@ -36,11 +39,26 @@ fn main() {
 
     let node = Arc::new(ptaf_node::PTAFNode::new(host_name, "22013".to_string(), config.clone()));
 
-    let lw = loki_worker::LokiWorker{
+    let lw = Arc::new(loki_worker::LokiWorker{
         node,
         config: config.clone(),
-    };
-    lw.collect_without_pods("ptaf-conf-mgr-rest", "app", "/home").unwrap();
+    });
+    let now = Instant::now();
+    let mut threads = vec![];
+    for svc in ["ptaf-conf-mgr-rest", "ptaf-conf-mgr-rest", "ptaf-conf-mgr-rest"] {
+        // lw.collect_without_pods(svc, "app", "/home").unwrap();
+        let l = lw.clone();
+        let t = thread::spawn(move || {
+            l.collect_without_pods(svc, "app", "/home").unwrap();
+        });
+        threads.push(t);
+    }
+    for t in threads {
+        t.join().unwrap();
+    }
+    let elapsed = now.elapsed();
+    println!("Elapsed: {:.2?}", elapsed);
+    // lw.collect_without_pods("ptaf-conf-mgr-rest", "app", "/home").unwrap();
     // let result = lw.collect_labels("instance").unwrap();
     // println!("result: {:?}", result)
 }

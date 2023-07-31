@@ -36,7 +36,6 @@ impl SSHConnection {
         let mut chunks = Vec::new();
         
         while let Ok(bytes_read) = channel.read(&mut buf) {
-            println!("bytes: {}", bytes_read);
             if bytes_read == 0 {
                 break;
             }

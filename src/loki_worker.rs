@@ -52,7 +52,7 @@ impl LokiWorker {
         let envs = self.config.get_envs();
         println!("collect query: {}", loki_cmd);
         let res = conn.execute(loki_cmd.as_str(), envs, None)?;
-        println!("{:?}", res);
+        // println!("{:?}", res);
         fs::write(dest_file, res.join("\n"))?;
 
         // println!("start copy to local");
