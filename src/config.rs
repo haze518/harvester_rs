@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 type UTCDatetTime = DateTime<Utc>;
 
+#[derive(Clone, Debug)]
 pub struct Loki {
     pub addr: String,
     pub https: bool,

@@ -8,7 +8,83 @@ use std::fs;
 use crate::ptaf_node;
 use crate::config;
 
-const LIMIT: &str = "2000000000";
+const LIMIT: u32 = 2000000000;
+
+struct LokiQueryBuilder<'a> {
+    query: Vec<String>,
+    time_format: String,
+    loki_creds: &'a config::Loki,
+}
+
+impl<'a> LokiQueryBuilder<'a> {
+
+    fn new(time_format: &str, loki_creds: &'a config::Loki) -> Self {
+        // let head = Self::script_head(loki_creds);
+        LokiQueryBuilder {
+            query: vec![],
+            time_format: time_format.to_string(),
+            loki_creds,
+        }
+    }
+    
+    fn add_query(&mut self, label: &str, val: &str) -> &mut Self {
+        let q = format!("query \'{{{}=\"{}\"}}\'", label, val);
+        self.query.push(q);
+        self
+    }
+
+    fn add_from(&mut self) -> &mut Self {
+        let q = format!("--from=\'{}\'", self.loki_creds.log_from.unwrap().format(self.time_format.as_str()));
+        self.query.push(q);
+        self
+    }
+
+    fn add_to(&mut self) -> &mut Self {
+        let q = format!("--to=\'{}\'", self.loki_creds.log_to.unwrap().format(self.time_format.as_str()));
+        self.query.push(q);
+        self
+    }
+
+    fn add_batch(&mut self, number: u16) -> &mut Self {
+        let q = format!("--batch={}", number.to_string());
+        self.query.push(q);
+        self
+    }
+
+    fn add_limit(&mut self, number: u32) -> &mut Self {
+        let q = format!("--limit {}", number.to_string());
+        self.query.push(q);
+        self
+    }
+
+    fn add_forward(&mut self) -> &mut Self {
+        self.query.push(String::from("--forward"));
+        self
+    }
+
+    fn add_raw(&mut self) -> &mut Self {
+        self.query.push(String::from("-o raw"));
+        self
+    }
+
+    fn script_head(&self) -> String {
+        let cmd = "/opt/logcli";
+        let user = self.loki_creds.login.clone();
+        let passwd = self.loki_creds.password.clone();
+        let loki_addr = self.loki_creds.full_address();
+        let org_id = self.loki_creds.org_id.clone();
+
+        let mut loki_cmd = format!("{} --username=\"{}\" --password=\"{}\"", cmd, user, passwd);
+        loki_cmd = format!("{} --addr=\"{}\" --org-id=\"{}\" -q", loki_cmd, loki_addr, org_id);
+        loki_cmd
+    }
+
+    fn get_query(&mut self) -> String {
+        self.query.insert(0, self.script_head());
+        self.query.join(" ")
+    }
+
+}
 
 pub struct LokiWorker {
     pub node: Arc<ptaf_node::PTAFNode>,
@@ -23,41 +99,40 @@ impl LokiWorker {
         label_name: &str,
         path: &str,
     ) -> Result<()> {
-        let query = format!("{{{}=\"{}\"}}", label_name, svc_name);
-        let start = format!("{}", self.config.loki.log_from.unwrap().format("%Y-%m-%d_%H-%M-%S"));
-        let end = format!("{}", self.config.loki.log_to.unwrap().format("%Y-%m-%d_%H-%M-%S"));
-        let local_file = format!("{}-{}__{}.log", svc_name, start, end);
+        let loki_cmd = LokiQueryBuilder::new("%Y-%m-%dT%H:%M:%SZ", &self.config.loki)
+            .add_query(label_name, svc_name)
+            .add_batch(5000)
+            .add_from()
+            .add_to()
+            .add_forward()
+            .add_limit(LIMIT)
+            .add_raw()
+            .get_query();
+
+        let local_file = format!(
+            "{}-{}__{}.log",
+            svc_name,
+            self.config.loki.log_from.unwrap().format("%Y-%m-%d_%H-%M-%S"),
+            self.config.loki.log_to.unwrap().format("%Y-%m-%d_%H-%M-%S"),
+        );
 
         println!("Loki logs for: {}", svc_name);
-        self.collect(query.as_str(), local_file.as_str(), path)?;
+        self.collect(loki_cmd.as_str(), local_file.as_str(), path)?;
         Ok(())
     }
 
     fn collect(
         &self,
-        query: &str,
+        loki_cmd: &str,
         file: &str,
         path: &str,
     ) -> Result<()> {
-        let out_file = format!("/tmp/{}", file);
         let dest_file = format!("{}/{}", path, file);
-        let mut loki_cmd = format!("{} query \'{}\' ", self.script_head(), query);
-        let from_str = format!("{}", self.config.loki.log_from.unwrap().format("%Y-%m-%dT%H:%M:%SZ"));
-        let to_str = format!("{}", self.config.loki.log_to.unwrap().format("%Y-%m-%dT%H:%M:%SZ"));
-        // loki_cmd += format!("--batch=5000 --from=\'{}\' --to=\'{}\' --forward ", from_str, to_str).as_str();
-        loki_cmd += format!("--batch=5000 --from=\'{}\' --to=\'{}\' --forward ", from_str, to_str).as_str();
-        loki_cmd += format!("--limit {} -o raw", LIMIT).as_str();
-
         let conn = self.node.get_ssh_conn()?;
         let envs = self.config.get_envs();
         println!("collect query: {}", loki_cmd);
-        let res = conn.execute(loki_cmd.as_str(), envs, None)?;
-        // println!("{:?}", res);
+        let res = conn.execute(loki_cmd, envs, None)?;
         fs::write(dest_file, res.join("\n"))?;
-
-        // println!("start copy to local");
-        // conn.copy_to_local(out_file.as_str(), dest_file.as_str())?;
-        // println!("from_file: {}, to_file: {}", dest_file, out_file);
         Ok(())
     }
 
@@ -68,6 +143,7 @@ impl LokiWorker {
         conn.execute(loki_cmd.as_str(), envs, None)
     }
 
+    // TODO удалить
     fn script_head(&self) -> String {
         let cmd = "/opt/logcli";
         let user = self.config.loki.login.clone();
@@ -81,4 +157,39 @@ impl LokiWorker {
     }
 }
 
-// TODO написать тесты на генерацию команды
+
+mod tests {
+    use chrono::NaiveDateTime;
+
+    use super::*;
+
+    #[test]
+    fn test_query_builder() {
+
+    }
+
+    #[test]
+    fn test_collect_without_pods_query() {
+        let mut config = config::Loki::default();
+        config.login = "admin".to_string();
+        config.password = "123".to_string();
+        config.log_from = Some(NaiveDateTime::parse_from_str("2023-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+            .unwrap().and_utc());
+        config.log_to = Some(NaiveDateTime::parse_from_str("2023-01-02 00:00:00", "%Y-%m-%d %H:%M:%S")
+            .unwrap().and_utc());
+        let result = LokiQueryBuilder::new("%Y-%m-%d_%H-%M-%S", &config)
+            .add_query("app", "ptaf-conf-mgr")
+            .add_batch(5000)
+            .add_from()
+            .add_to()
+            .add_forward()
+            .add_limit(LIMIT)
+            .add_raw()
+            .get_query();
+        let should_eq = "/opt/logcli --username=\"admin\" --password=\"123\" \
+        --addr=\"http://loki.ptaf-infra.svc.cluster.local:3100\" --org-id=\"3jqM2DLOMbbQzdodO3cO\" -q query \
+        \'{app=\"ptaf-conf-mgr\"}\' --batch=5000 --from=\'2023-01-01_00-00-00\' --to=\'2023-01-02_00-00-00\' \
+        --forward --limit 2000000000 -o raw".to_string();
+        assert_eq!(result, should_eq);
+    }
+}

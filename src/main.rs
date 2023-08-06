@@ -30,7 +30,7 @@ fn main() {
             loki,
         }
     );
-    let host_name = "m0-98.af.rd.ptsecurity.ru".to_string();
+    let host_name = "m0-34.af.rd.ptsecurity.ru".to_string();
     // let host_name = hostname::get()
     //     .unwrap()
     //     .into_string()
@@ -45,7 +45,7 @@ fn main() {
     });
     let now = Instant::now();
     let mut threads = vec![];
-    for svc in ["ptaf-conf-mgr-rest", "ptaf-conf-mgr-rest", "ptaf-conf-mgr-rest"] {
+    for svc in ["ptaf-conf-mgr-rest", "ptaf-conf-mgr-rpc", "ptaf-resource-mgr"] {
         // lw.collect_without_pods(svc, "app", "/home").unwrap();
         let l = lw.clone();
         let t = thread::spawn(move || {
