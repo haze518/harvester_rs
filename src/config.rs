@@ -41,6 +41,10 @@ pub struct SSHCreds {
     pub key_path: Option<String>,
 }
 
+pub struct K8S {
+    host: String,
+    port: String,
+}
 
 pub struct Config {
     pub ssh_creds: SSHCreds,

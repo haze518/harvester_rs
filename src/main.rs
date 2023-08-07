@@ -4,11 +4,11 @@ use chrono::{Utc, Duration};
 use std::thread;
 use std::time::Instant;
 
-
 mod session_manager;
 mod ssh_utils;
 mod config;
 mod ptaf_node;
+mod k8s_manager;
 mod loki_worker;
 
 
@@ -36,6 +36,9 @@ fn main() {
     //     .into_string()
     //     .unwrap();
     println!("hostname: {}", host_name);
+
+    let k8s_manager = k8s_manager::K8SManager::new("/home/pt/.kube/config").unwrap();
+    k8s_manager.get_pods().unwrap();
 
     let node = Arc::new(ptaf_node::PTAFNode::new(host_name, "22013".to_string(), config.clone()));
 

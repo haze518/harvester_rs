@@ -7,8 +7,12 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.71"
+base64 = "0.21.2"
 chrono = "0.4.26"
+curl = "0.4.44"
 hostname = "0.3.1"
 r2d2 = "0.8.10"
+serde = { version = "1.0.182", features = ["serde_derive"] }
+serde_yaml = "0.9.25"
 ssh2 = "0.9.4"
-thiserror = "1.0.44"
+thiserror = "^1.0.44"

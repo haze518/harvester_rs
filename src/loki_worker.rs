@@ -19,7 +19,6 @@ struct LokiQueryBuilder<'a> {
 impl<'a> LokiQueryBuilder<'a> {
 
     fn new(time_format: &str, loki_creds: &'a config::Loki) -> Self {
-        // let head = Self::script_head(loki_creds);
         LokiQueryBuilder {
             query: vec![],
             time_format: time_format.to_string(),
