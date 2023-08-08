@@ -52,6 +52,24 @@ struct KubeConfig {
     users: Vec<UserData>,
 }
 
+
+#[derive(Debug, Deserialize)]
+struct Pod {
+    metadata: Metadata,
+}
+
+#[derive(Debug, Deserialize)]
+struct Metadata {
+    name: String,
+    namespace: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PodList {
+    items: Vec<Pod>,
+}
+
+
 impl KubeConfig {
     fn new(path: &str) -> Result<Self> {
         let content = fs::read_to_string(path)?;
@@ -70,9 +88,6 @@ impl K8SManager {
         Ok(K8SManager{ kube_config: cfg })
     }
 
-    // корректный запрос: root@m0-34:~# curl https://127.0.0.1:6443/apis/apps/v1/namespaces/default/deployments --cacert ca.cert --cert cert --key key
-    // где certs - base64 decode
-    // завернуть ответ в serde структуру
     pub fn get_pods(&self) -> Result<()> {
         let ca_cert = general_purpose::STANDARD.decode(&self.kube_config.clusters[0].cluster.ca_cert)?;
         let cert = general_purpose::STANDARD.decode(&self.kube_config.users[0].user.certificate)?;
@@ -97,6 +112,7 @@ impl K8SManager {
         drop(transfer);
 
         let result = std::str::from_utf8(&buf)?;
+        let result: Result<PodList, serde_json::Error> = serde_json::from_str(result);
 
         println!("Response: {:?}", result);
         Ok(())
@@ -131,6 +147,28 @@ mod tests {
             client-key-data: hidden
         "#;
         let result: Result<KubeConfig, serde_yaml::Error> = serde_yaml::from_str(data);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_pod_list() {
+        let data = r#"{
+            "items": [
+                {
+                    "metadata": {
+                        "name": "pod-1",
+                        "namespace": "default"
+                    }
+                },
+                {
+                    "metadata": {
+                        "name": "pod-2",
+                        "namespace": "namespace-1"
+                    }
+                }
+            ]
+        }"#;
+        let result: Result<PodList, serde_json::Error> = serde_json::from_str(data);
         assert!(result.is_ok());
     }
 }
