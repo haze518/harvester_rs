@@ -1,58 +1,105 @@
-use chrono::{DateTime, Utc};
-use std::collections::HashMap;
+use chrono::{DateTime, NaiveDateTime, Utc};
+use serde::{de, Deserialize, Deserializer};
+use std::{fs, str::FromStr, fmt::Display};
+use anyhow::{Result, Context};
 
-type UTCDatetTime = DateTime<Utc>;
+use crate::constants;
 
-#[derive(Clone, Debug)]
-pub struct Loki {
+#[derive(Debug, Deserialize)]
+pub struct Labels {
+    pub app: Vec<String>,
+    pub unit: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct App {
+    pub items: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Unit {
+    pub items: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Artifacts {
+    pub cores: bool,
+    pub backend: bool,
+    pub core_labels: Labels,
+    pub infra_labels: Labels,
+    pub backend_labels: Labels,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Param {
+    pub ssh: SshConfig,
+    pub loki: LokiConfig,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SshConfig {
     pub addr: String,
-    pub https: bool,
-    pub login: String,
-    pub password: String,
-    pub org_id: String,
-    pub log_from: Option<UTCDatetTime>,
-    pub log_to: Option<UTCDatetTime>,
-}
-
-impl Default for Loki {
-    fn default() -> Self {
-        Loki {
-            addr: "loki.ptaf-infra.svc.cluster.local:3100".to_string(),
-            https: false,
-            login: "".to_string(),
-            password: "".to_string(),
-            org_id: "3jqM2DLOMbbQzdodO3cO".to_string(),
-            log_from: None,
-            log_to: None,
-        }
-    }
-}
-
-impl Loki {
-    pub fn full_address(&self) -> String {
-        let protocol = if self.https { "https" } else { "http" }; 
-        format!("{}://{}", protocol, self.addr)
-    }
-}
-
-pub struct SSHCreds {
     pub login: String,
     pub password: Option<String>,
-    pub key_path: Option<String>,
 }
 
-pub struct K8S {
-    host: String,
-    port: String,
+impl SshConfig {
+    pub fn key_path(&self) -> String {
+        "/home/pt/.ssh/id_rsa.ptaf".to_string()
+    }
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct LokiConfig {
+    pub login: String,
+    pub password: String,
+    #[serde(deserialize_with = "deserialize_datetime_from_str")]
+    pub log_from: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_datetime_from_str")]
+    pub log_to: Option<DateTime<Utc>>,
+    pub since: String,
+    pub time_zone: String,
+    pub tenant_id: String,
+}
+
+fn deserialize_datetime_from_str<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt_str: Option<String> = Deserialize::deserialize(deserializer)?;
+    match opt_str {
+        Some(s) => {
+            let dt = NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M")
+                .map_err(|_| de::Error::custom("Invalid date format"))
+                .and_then(|dt| Ok(DateTime::<Utc>::from_utc(dt, Utc)))?;
+            Ok(Some(dt))
+        },
+        None => Ok(None)
+    }
+}
+
+impl LokiConfig {
+    pub fn full_address(&self) -> String {
+        "http://loki.ptaf-infra.svc.cluster.local:3100".to_string()
+    }
+    pub fn org_id(&self) -> String {
+        "3jqM2DLOMbbQzdodO3cO".to_string()
+    }
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Config {
-    pub ssh_creds: SSHCreds,
-    pub loki: Loki,
+    pub artifacts: Artifacts,
+    pub param: Param,
 }
-
 
 impl Config {
+    pub fn from_string(config_str: &str) -> Result<Self> {
+        // let contents = fs::read_to_string(path)?;
+        let config: Config = serde_yaml::from_str(&config_str)?;
+        Ok(config)
+    }
+
     pub fn get_envs(&self) -> String {
         "".to_string()
         // let login = &self.ssh_creds.login;
@@ -78,5 +125,15 @@ impl Config {
         //     }
         // }
         // env
+    }
+}
+
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_from_file() {
+        let config = Config::from_string(constants::DEFAULT_CONFIG);
+        assert!(config.is_ok());
     }
 }

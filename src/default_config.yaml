@@ -1,0 +1,53 @@
+artifacts: 
+    cores: true
+    backend: true
+    core_labels:
+        app:
+        - ptaf-core
+        - ptaf-ip-list-service
+        - ptaf-correlator
+    infra_labels:
+        app:
+        - rabbitmq
+        - clickhouse
+        - postgesql
+        unit:
+        - kubelet.service
+        - wsc_agent.service
+    backend_labels:
+        app:
+        - ptaf-audit-mgr-rest
+        - ptaf-audit-mgr-rpc
+        - ptaf-auth-mgr
+        - ptaf-backup-mgr
+        - ptaf-conf-mgr-rest
+        - ptaf-conf-mgr-rpc
+        - ptaf-incident-mgr-rest
+        - ptaf-incident-mgr-rpc
+        - ptaf-license-mgr
+        - ptaf-license-restapi
+        - ptaf-monitoring-mgr
+        - ptaf-notify-mgr
+        - ptaf-report-mgr
+        - ptaf-resource-mgr
+        - ptaf-task-mgr
+        - ptaf-task-mgr-scheduler
+        - ptaf-border
+        - ptaf-restproxy
+param: 
+    ssh: 
+        # <addr>:<port>
+        addr: # required
+        login: # required
+        password: # required
+    loki: 
+        login: # required
+        password: # required
+        # May be empty. Time format is: 'yyyy-MM-dd hh:mm'
+        log_from: 
+        # May be empty. Time format is: 'yyyy-MM-dd hh:mm'
+        log_to: 
+        since: 4h
+        # Change if needed.
+        time_zone: "+3"
+        tenant_id: 

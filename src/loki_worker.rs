@@ -5,20 +5,21 @@ use std::path::PathBuf;
 use std::fs;
 
 
-use crate::ptaf_node;
+use crate::k8s_manager;
 use crate::config;
+use crate::ptaf_node;
 
 const LIMIT: u32 = 2000000000;
 
 struct LokiQueryBuilder<'a> {
     query: Vec<String>,
     time_format: String,
-    loki_creds: &'a config::Loki,
+    loki_creds: &'a config::LokiConfig,
 }
 
 impl<'a> LokiQueryBuilder<'a> {
 
-    fn new(time_format: &str, loki_creds: &'a config::Loki) -> Self {
+    fn new(time_format: &str, loki_creds: &'a config::LokiConfig) -> Self {
         LokiQueryBuilder {
             query: vec![],
             time_format: time_format.to_string(),
@@ -71,7 +72,7 @@ impl<'a> LokiQueryBuilder<'a> {
         let user = self.loki_creds.login.clone();
         let passwd = self.loki_creds.password.clone();
         let loki_addr = self.loki_creds.full_address();
-        let org_id = self.loki_creds.org_id.clone();
+        let org_id = self.loki_creds.org_id();
 
         let mut loki_cmd = format!("{} --username=\"{}\" --password=\"{}\"", cmd, user, passwd);
         loki_cmd = format!("{} --addr=\"{}\" --org-id=\"{}\" -q", loki_cmd, loki_addr, org_id);
@@ -88,6 +89,7 @@ impl<'a> LokiQueryBuilder<'a> {
 pub struct LokiWorker {
     pub node: Arc<ptaf_node::PTAFNode>,
     pub config: Arc<config::Config>,
+    // k8s_manager: Arc<k8s_manager::K8SManager>
 }
 
 impl LokiWorker {
@@ -98,7 +100,10 @@ impl LokiWorker {
         label_name: &str,
         path: &str,
     ) -> Result<()> {
-        let loki_cmd = LokiQueryBuilder::new("%Y-%m-%dT%H:%M:%SZ", &self.config.loki)
+        let loki_cmd = LokiQueryBuilder::new(
+            "%Y-%m-%dT%H:%M:%SZ",
+            &self.config.param.loki
+        )
             .add_query(label_name, svc_name)
             .add_batch(5000)
             .add_from()
@@ -111,12 +116,32 @@ impl LokiWorker {
         let local_file = format!(
             "{}-{}__{}.log",
             svc_name,
-            self.config.loki.log_from.unwrap().format("%Y-%m-%d_%H-%M-%S"),
-            self.config.loki.log_to.unwrap().format("%Y-%m-%d_%H-%M-%S"),
+            self.config.param.loki.log_from.unwrap().format("%Y-%m-%d_%H-%M-%S"),
+            self.config.param.loki.log_to.unwrap().format("%Y-%m-%d_%H-%M-%S"),
         );
 
         println!("Loki logs for: {}", svc_name);
         self.collect(loki_cmd.as_str(), local_file.as_str(), path)?;
+        Ok(())
+    }
+
+    pub fn collect_with_pods(
+        &self,
+        svc_name: &str,
+        label_name: &str,
+        path: &str,
+    ) -> Result<()> {
+        let loki_pods = self.collect_labels("instance")?
+            .into_iter()
+            .filter(|pod| pod.starts_with(svc_name))
+            .collect::<Vec<String>>();
+        
+        // TODO добавить tenant в конфиг
+        // let alive_pods = self.k8s_manager.get_pods()?
+        //     .items
+        //     .into_iter()
+        //     .filter(predicate);
+
         Ok(())
     }
 
@@ -145,10 +170,10 @@ impl LokiWorker {
     // TODO удалить
     fn script_head(&self) -> String {
         let cmd = "/opt/logcli";
-        let user = self.config.loki.login.clone();
-        let passwd = self.config.loki.password.clone();
-        let loki_addr = self.config.loki.full_address();
-        let org_id = self.config.loki.org_id.clone();
+        let user = self.config.param.loki.login.clone();
+        let passwd = self.config.param.loki.password.clone();
+        let loki_addr = self.config.param.loki.full_address();
+        let org_id = self.config.param.loki.org_id();
 
         let mut loki_cmd = format!("{} --username=\"{}\" --password=\"{}\" ", cmd, user, passwd);
         loki_cmd = format!("{} --addr=\"{}\" --org-id=\"{}\" -q ", loki_cmd, loki_addr, org_id);
@@ -169,7 +194,7 @@ mod tests {
 
     #[test]
     fn test_collect_without_pods_query() {
-        let mut config = config::Loki::default();
+        let mut config = config::LokiConfig::default();
         config.login = "admin".to_string();
         config.password = "123".to_string();
         config.log_from = Some(NaiveDateTime::parse_from_str("2023-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")

@@ -66,7 +66,7 @@ struct Metadata {
 
 #[derive(Debug, Deserialize)]
 struct PodList {
-    items: Vec<Pod>,
+    pub items: Vec<Pod>,
 }
 
 
@@ -88,7 +88,7 @@ impl K8SManager {
         Ok(K8SManager{ kube_config: cfg })
     }
 
-    pub fn get_pods(&self) -> Result<()> {
+    pub fn get_pods(&self) -> Result<PodList> {
         let ca_cert = general_purpose::STANDARD.decode(&self.kube_config.clusters[0].cluster.ca_cert)?;
         let cert = general_purpose::STANDARD.decode(&self.kube_config.users[0].user.certificate)?;
         let key = general_purpose::STANDARD.decode(&self.kube_config.users[0].user.key)?;
@@ -112,10 +112,9 @@ impl K8SManager {
         drop(transfer);
 
         let result = std::str::from_utf8(&buf)?;
-        let result: Result<PodList, serde_json::Error> = serde_json::from_str(result);
+        let result: PodList = serde_json::from_str(result)?;
 
-        println!("Response: {:?}", result);
-        Ok(())
+        Ok(result)
     }
 }
 

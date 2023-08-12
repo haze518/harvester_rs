@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use crate::session_manager;
 use crate::ssh_utils;
 use crate::config;
+use crate::constants;
 
 pub struct PTAFNode {
     host: String,
@@ -33,9 +34,9 @@ impl PTAFNode {
         let manager = session_manager::SessionManager {
             host: host,
             port: port,
-            login: cfg.ssh_creds.login.clone(),
-            password: cfg.ssh_creds.password.clone(),
-            key_file: cfg.ssh_creds.key_path.clone(),
+            login: cfg.param.ssh.login.clone(),
+            password: cfg.param.ssh.password.clone(),
+            key_file: Some(cfg.param.ssh.key_path()),
         };
         println!("init ssh manager");
         let pool = Pool::builder().build(manager)?;
@@ -52,16 +53,10 @@ mod tests {
 
     #[test]
     fn test_get_ssh_conn() {
-        let config = Arc::new(
-            config::Config {
-                ssh_creds: config::SSHCreds {
-                    login: "admin".to_string(),
-                    password: Some("admin".to_string()),
-                    key_path: Some("".to_string()),
-                },
-                loki: config::Loki::default(),
-            }
-        );
+        let mut cfg = config::Config::from_string(constants::DEFAULT_CONFIG).unwrap();
+        cfg.param.ssh.login = "admin".to_string();
+        cfg.param.ssh.password = Some("admin".to_string());
+        let config = Arc::new(cfg);
 
         let node = Arc::new(
             PTAFNode::new("localhost".to_string(), "2222".to_string(), config)
