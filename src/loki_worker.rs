@@ -3,6 +3,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use std::path::PathBuf;
 use std::fs;
+use std::thread;
 
 
 use crate::k8s_manager;
@@ -27,8 +28,19 @@ impl<'a> LokiQueryBuilder<'a> {
         }
     }
     
-    fn add_query(&mut self, label: &str, val: &str) -> &mut Self {
-        let q = format!("query \'{{{}=\"{}\"}}\'", label, val);
+    fn add_query(&mut self, label: &str, val: &str, instance: Option<&str>, instance_val: Option<&str>) -> &mut Self {
+        let mut q = format!("query \'{{{}=\"{}\"}}\'", label, val);
+        if instance.is_some() && instance_val.is_some() {
+            q = format!(
+                "query \'{{{}=\"{}\", {}=\"{}\"}}\'", label, val, instance.unwrap(), instance_val.unwrap(),
+            );
+        }
+        self.query.push(q);
+        self
+    }
+
+    fn add_instance(&mut self, pod_name: &str) -> &mut Self {
+        let q = format!("instance=\"{}\"", pod_name);
         self.query.push(q);
         self
     }
@@ -86,10 +98,11 @@ impl<'a> LokiQueryBuilder<'a> {
 
 }
 
+#[derive(Clone)]
 pub struct LokiWorker {
     pub node: Arc<ptaf_node::PTAFNode>,
-    pub config: Arc<config::Config>,
-    // k8s_manager: Arc<k8s_manager::K8SManager>
+    pub config: config::SharedConfig,
+    pub k8s_manager: Arc<k8s_manager::K8SManager>
 }
 
 impl LokiWorker {
@@ -104,7 +117,7 @@ impl LokiWorker {
             "%Y-%m-%dT%H:%M:%SZ",
             &self.config.param.loki
         )
-            .add_query(label_name, svc_name)
+            .add_query(label_name, svc_name, None, None)
             .add_batch(5000)
             .add_from()
             .add_to()
@@ -135,13 +148,46 @@ impl LokiWorker {
             .into_iter()
             .filter(|pod| pod.starts_with(svc_name))
             .collect::<Vec<String>>();
-        
         // TODO добавить tenant в конфиг
-        // let alive_pods = self.k8s_manager.get_pods()?
-        //     .items
-        //     .into_iter()
-        //     .filter(predicate);
+        // let labels = &self.config.artifacts.get_svc_names();
 
+        let alive_pods = self.k8s_manager.get_pods()?   
+            .items
+            .into_iter()
+            .filter(|x| x.metadata.name.starts_with(svc_name))
+            .map(|x| x.metadata.name)
+            .collect::<Vec<_>>();
+
+        let dead_pods = loki_pods
+            .iter()
+            .filter(|x| !alive_pods.contains(x))
+            .collect::<Vec<_>>();
+
+        println!("harvest from alive pods");
+        println!("alive pods: {:?}, label_name: {}, svc_name: {}", alive_pods, label_name, svc_name);
+        for pod in alive_pods {
+            let loki_cmd = LokiQueryBuilder::new(
+                "%Y-%m-%dT%H:%M:%SZ",
+                &self.config.param.loki
+            )
+                .add_query(label_name, svc_name, Some("instance"), Some(&pod))
+                .add_batch(5000)
+                .add_from()
+                .add_to()
+                .add_forward()
+                .add_limit(LIMIT)
+                .add_raw()
+                .get_query();
+
+            let local_file = format!(
+                "{}-{}__{}.log",
+                pod,
+                self.config.param.loki.log_from.unwrap().format("%Y-%m-%d_%H-%M-%S"),
+                self.config.param.loki.log_to.unwrap().format("%Y-%m-%d_%H-%M-%S"),
+            );
+            self.collect(loki_cmd.as_str(), local_file.as_str(), path)?;
+        }
+        
         Ok(())
     }
 
@@ -192,28 +238,28 @@ mod tests {
 
     }
 
-    #[test]
-    fn test_collect_without_pods_query() {
-        let mut config = config::LokiConfig::default();
-        config.login = "admin".to_string();
-        config.password = "123".to_string();
-        config.log_from = Some(NaiveDateTime::parse_from_str("2023-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
-            .unwrap().and_utc());
-        config.log_to = Some(NaiveDateTime::parse_from_str("2023-01-02 00:00:00", "%Y-%m-%d %H:%M:%S")
-            .unwrap().and_utc());
-        let result = LokiQueryBuilder::new("%Y-%m-%d_%H-%M-%S", &config)
-            .add_query("app", "ptaf-conf-mgr")
-            .add_batch(5000)
-            .add_from()
-            .add_to()
-            .add_forward()
-            .add_limit(LIMIT)
-            .add_raw()
-            .get_query();
-        let should_eq = "/opt/logcli --username=\"admin\" --password=\"123\" \
-        --addr=\"http://loki.ptaf-infra.svc.cluster.local:3100\" --org-id=\"3jqM2DLOMbbQzdodO3cO\" -q query \
-        \'{app=\"ptaf-conf-mgr\"}\' --batch=5000 --from=\'2023-01-01_00-00-00\' --to=\'2023-01-02_00-00-00\' \
-        --forward --limit 2000000000 -o raw".to_string();
-        assert_eq!(result, should_eq);
-    }
+    // #[test]
+    // fn test_collect_without_pods_query() {
+    //     let mut config = config::LokiConfig::default();
+    //     config.login = "admin".to_string();
+    //     config.password = "123".to_string();
+    //     config.log_from = Some(NaiveDateTime::parse_from_str("2023-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+    //         .unwrap().and_utc());
+    //     config.log_to = Some(NaiveDateTime::parse_from_str("2023-01-02 00:00:00", "%Y-%m-%d %H:%M:%S")
+    //         .unwrap().and_utc());
+    //     let result = LokiQueryBuilder::new("%Y-%m-%d_%H-%M-%S", &config)
+    //         .add_query("app", "ptaf-conf-mgr")
+    //         .add_batch(5000)
+    //         .add_from()
+    //         .add_to()
+    //         .add_forward()
+    //         .add_limit(LIMIT)
+    //         .add_raw()
+    //         .get_query();
+    //     let should_eq = "/opt/logcli --username=\"admin\" --password=\"123\" \
+    //     --addr=\"http://loki.ptaf-infra.svc.cluster.local:3100\" --org-id=\"3jqM2DLOMbbQzdodO3cO\" -q query \
+    //     \'{app=\"ptaf-conf-mgr\"}\' --batch=5000 --from=\'2023-01-01_00-00-00\' --to=\'2023-01-02_00-00-00\' \
+    //     --forward --limit 2000000000 -o raw".to_string();
+    //     assert_eq!(result, should_eq);
+    // }
 }

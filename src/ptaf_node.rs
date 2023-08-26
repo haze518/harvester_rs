@@ -13,15 +13,14 @@ use crate::constants;
 pub struct PTAFNode {
     host: String,
     port: String,
-    config: Arc<config::Config>,
+    config: config::SharedConfig,
     ssh_manager: ssh_utils::SSHManager,
 }
 
 impl PTAFNode {
     
-    pub fn new(host: String, port: String, config: Arc<config::Config>) -> Self {
-        let c = config.clone();
-        let ssh_manager = Self::init_ssh_manager(host.clone(), port.clone(), c).unwrap();
+    pub fn new(host: String, port: String, config: config::SharedConfig) -> Self {
+        let ssh_manager: ssh_utils::SSHManager = Self::init_ssh_manager(host.clone(), port.clone(), config.clone()).unwrap();
         PTAFNode { host, port, config, ssh_manager }
     }
 
@@ -29,14 +28,13 @@ impl PTAFNode {
         Ok(self.ssh_manager.get_connection()?)
     }
 
-    fn init_ssh_manager(host: String, port: String, config: Arc<config::Config>) -> Result<ssh_utils::SSHManager> {
-        let cfg = config.clone();
+    fn init_ssh_manager(host: String, port: String, config: config::SharedConfig) -> Result<ssh_utils::SSHManager> {
         let manager = session_manager::SessionManager {
             host: host,
             port: port,
-            login: cfg.param.ssh.login.clone(),
-            password: cfg.param.ssh.password.clone(),
-            key_file: Some(cfg.param.ssh.key_path()),
+            login: config.param.ssh.login.clone(),
+            password: config.param.ssh.password.clone(),
+            key_file: Some(config.param.ssh.key_path()),
         };
         println!("init ssh manager");
         let pool = Pool::builder().build(manager)?;
@@ -56,10 +54,11 @@ mod tests {
         let mut cfg = config::Config::from_string(constants::DEFAULT_CONFIG).unwrap();
         cfg.param.ssh.login = "admin".to_string();
         cfg.param.ssh.password = Some("admin".to_string());
-        let config = Arc::new(cfg);
+
+        let shared_config = config::SharedConfig::new(cfg);
 
         let node = Arc::new(
-            PTAFNode::new("localhost".to_string(), "2222".to_string(), config)
+            PTAFNode::new("localhost".to_string(), "2222".to_string(), shared_config)
         );
 
         let threads = vec!["echo 1337", "echo 777"]

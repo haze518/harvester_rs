@@ -54,18 +54,18 @@ struct KubeConfig {
 
 
 #[derive(Debug, Deserialize)]
-struct Pod {
-    metadata: Metadata,
+pub struct Pod {
+    pub metadata: Metadata,
 }
 
 #[derive(Debug, Deserialize)]
-struct Metadata {
-    name: String,
-    namespace: String,
+pub struct Metadata {
+    pub name: String,
+    pub namespace: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct PodList {
+pub struct PodList {
     pub items: Vec<Pod>,
 }
 

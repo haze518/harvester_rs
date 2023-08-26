@@ -1,14 +1,26 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{de, Deserialize, Deserializer};
-use std::{fs, str::FromStr, fmt::Display};
+use std::{fs, str::FromStr, fmt::Display, sync::Arc};
 use anyhow::{Result, Context};
+use std::ops::Deref;
 
 use crate::constants;
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Labels {
     pub app: Vec<String>,
     pub unit: Option<Vec<String>>,
+}
+
+impl Labels {
+    pub fn get_svc_names(&self) -> Vec<&String> {
+        let mut result = vec![];
+        result.extend(self.app.iter());
+        if let Some(u) = &self.unit {
+            result.extend(u.iter());
+        }
+        result
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -21,7 +33,16 @@ pub struct Unit {
     pub items: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+
+#[derive(Clone, Debug)]
+pub enum LabelType {
+    CoreLabel(Labels),
+    InfraLabel(Labels),
+    BackendLabel(Labels),
+}
+
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct Artifacts {
     pub cores: bool,
     pub backend: bool,
@@ -30,13 +51,40 @@ pub struct Artifacts {
     pub backend_labels: Labels,
 }
 
-#[derive(Debug, Deserialize)]
+impl Artifacts {
+    pub fn get_labels(&self) -> Vec<LabelType> {
+        let mut result = vec![];
+        if self.backend {
+            result.push(LabelType::BackendLabel(self.backend_labels.clone()));
+            result.push(LabelType::InfraLabel(self.infra_labels.clone()));
+        }
+        if self.cores {
+            result.push(LabelType::CoreLabel(self.core_labels.clone()));
+        }
+        result
+    }
+
+    pub fn get_svc_names(&self) -> Vec<&String> {
+        let mut result = vec![];
+        if self.backend {
+            result.extend(self.backend_labels.get_svc_names());
+            result.extend(self.infra_labels.get_svc_names());
+        }
+        if self.cores {
+            result.extend(self.core_labels.get_svc_names());
+        }
+        result
+
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct Param {
     pub ssh: SshConfig,
     pub loki: LokiConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct SshConfig {
     pub addr: String,
     pub login: String,
@@ -49,7 +97,7 @@ impl SshConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Clone, Debug, Deserialize, Default)]
 pub struct LokiConfig {
     pub login: String,
     pub password: String,
@@ -87,7 +135,24 @@ impl LokiConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone)]
+pub struct SharedConfig(Arc<Config>);
+
+impl SharedConfig {
+    pub fn new(config: Config) -> Self {
+        SharedConfig(Arc::new(config))
+    }
+}
+
+impl Deref for SharedConfig {
+    type Target = Arc<Config>;
+
+    fn deref(&self) ->&Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct Config {
     pub artifacts: Artifacts,
     pub param: Param,
