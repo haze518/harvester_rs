@@ -19,6 +19,7 @@ impl SSHConnection {
         envs: String,
         working_directory: Option<&str>,
     ) -> Result<Vec<String>> {
+        println!("get session");
         let mut channel = self.connection.channel_session()?;
         let mut command = match working_directory {
             Some(dir) => format!("cd {}; {}", dir, command),
@@ -35,6 +36,7 @@ impl SSHConnection {
         let mut buf = vec![0; 1024];
         let mut chunks = Vec::new();
         
+        println!("trying to get data");
         while let Ok(bytes_read) = channel.read(&mut buf) {
             if bytes_read == 0 {
                 break;

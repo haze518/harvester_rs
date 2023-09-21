@@ -37,7 +37,8 @@ impl PTAFNode {
             key_file: Some(config.param.ssh.key_path()),
         };
         println!("init ssh manager");
-        let pool = Pool::builder().build(manager)?;
+        // TODO перенести max_size в config
+        let pool = Pool::builder().max_size(10).build(manager)?;
         let ssh_manager = ssh_utils::SSHManager::new(pool);
         Ok(ssh_manager)
     }

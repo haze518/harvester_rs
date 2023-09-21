@@ -98,7 +98,6 @@ impl<'a> LokiQueryBuilder<'a> {
 
 }
 
-#[derive(Clone)]
 pub struct LokiWorker {
     pub node: Arc<ptaf_node::PTAFNode>,
     pub config: config::SharedConfig,
